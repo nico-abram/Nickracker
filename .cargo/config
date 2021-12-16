@@ -1,0 +1,7 @@
+[target.x86_64-pc-windows-msvc]
+# faster linker and needed for cross language LTO
+linker = "lld-link.exe"
+# linker needs specified here because opencv builds some rust on its build script and that will use our CFLAGS and fail
+# because of LTO .obj unless it uses lld-link, and the linker line above is not propagated to it, but this env var is
+#, "-Clinker-plugin-lto"
+rustflags = ["-Clinker=lld-link"]

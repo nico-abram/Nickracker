@@ -1,0 +1,72 @@
+name: nickracker
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        rust:
+          - nightly-2021-12-26
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Build
+      run: cargo +${{ matrix.rust }} build --release --verbose
+
+  test:
+    strategy:
+      matrix:
+        rust:
+          - nightly-2021-12-26
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cargo +${{ matrix.rust }} test --release --verbose -- --nocapture
+
+  docs:
+    strategy:
+      matrix:
+        rust:
+          - nightly-2021-12-26
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup
+        with:
+          rust: ${{ matrix.rust }}
+
+      - name: Build docs
+        run: cargo +${{ matrix.rust }} doc -vv
+
+  clippy:
+    strategy:
+      matrix:
+        rust:
+          - nightly-2021-12-26
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup
+        with:
+          rust: ${{ matrix.rust }}
+
+      - run: rustup component add clippy --toolchain ${{ matrix.rust }}
+
+      - run: cargo +${{ matrix.rust }} clippy -- -Dwarnings

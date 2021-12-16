@@ -1,0 +1,16 @@
+/target
+/console/target
+/solver/target
+/find-subimage
+/capture-test/target
+notes.txt
+*out*.bmp
+/garbage_backups
+tess vars.txt
+[0-9]*_[0-9]*_[^.]*.bmp
+[0-9]*_[0-9]*_.bmp
+/zlib
+/leptonica
+/tesseract
+/opencv
+sizer.txt

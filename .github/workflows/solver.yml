@@ -1,0 +1,139 @@
+name: solver
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly-2021-12-26
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup_no_tess
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Build
+      run: cd solver; cargo +${{ matrix.rust }} build --release --verbose
+
+  test:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test --release --verbose -- --nocapture
+
+  clippy:
+    strategy:
+      matrix:
+        rust:
+          - nightly-2021-12-26
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup
+        with:
+          rust: ${{ matrix.rust }}
+
+      - run: rustup component add clippy --toolchain ${{ matrix.rust }}
+
+      - run: cd solver; cargo +${{ matrix.rust }} clippy -- -Dwarnings
+
+  exhaustive_1:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test test::exhaustive_one_fifths --release --verbose -- --nocapture --exact --ignored
+
+  exhaustive_2:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test test::exhaustive_two_fifths --release --verbose -- --nocapture --exact --ignored
+
+  exhaustive_3:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test test::exhaustive_three_fifths --release --verbose -- --nocapture --exact --ignored
+
+  exhaustive_4:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test test::exhaustive_four_fifths --release --verbose -- --nocapture --exact --ignored
+
+  exhaustive_5:
+    strategy:
+      matrix:
+        rust:
+          - beta
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup
+      with:
+        rust: ${{ matrix.rust }}
+
+    - name: Run tests
+      run: cd solver; cargo +${{ matrix.rust }} test test::exhaustive_five_fifths --release --verbose -- --nocapture --exact --ignored

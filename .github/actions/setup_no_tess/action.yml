@@ -1,0 +1,30 @@
+name: "Setup No Tesseract"
+description: "Setup environment"
+
+inputs:
+  rust:
+    description: 'rust toolchain'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache toolchain
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: ${{ runner.os }}-notess-toolchain-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache rust dependencies
+      uses: Swatinem/rust-cache@v1
+      with:
+        key: ${{ runner.os }}-notess-dependencies-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ inputs.rust }}
+        default: true

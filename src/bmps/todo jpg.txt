@@ -1,0 +1,2 @@
+everything but smol n big syms
+Might also want to rescale

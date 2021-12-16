@@ -1,0 +1,49 @@
+name: "Setup"
+description: "Setup environment and dependencies"
+
+inputs:
+  rust:
+    description: 'rust toolchain'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache toolchain
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: ${{ runner.os }}-toolchain-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache rust dependencies
+      uses: Swatinem/rust-cache@v1
+      with:
+        key: ${{ runner.os }}-dependencies-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ inputs.rust }}
+        default: true
+
+    - run: echo "VCPKG_INSTALLED_DIR=$((Get-Item .).FullName -replace "\\","/")/vcpkg/installed" >> $env:GITHUB_ENV
+      shell: pwsh
+
+    - name: Restore artifacts, or run vcpkg, build (and cache artifacts as post step)
+      uses: lukka/run-vcpkg@v10
+      id: runvcpkg
+      env:
+        VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
+      with:
+        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+        vcpkgGitCommitId: '1085a57da0725c19e19586025438e8c16f34c890'
+        # Run vcpkg with the command specified by the `runVcpkgFormatString` input.
+        runVcpkgInstall: true
+        vcpkgJsonGlob: 'vcpkg.json'
+        appendedCacheKey: test
+
+    - run: echo "VCPKG_ROOT=$((Get-Item .).FullName -replace "\\","/")\vcpkg" >> $env:GITHUB_ENV
+      shell: pwsh
