@@ -474,11 +474,9 @@ mod test {
         );
         let avg: f64 = guess_count_bins
             .iter()
-            .skip(1)
             .enumerate()
-            .map(|(idx, x)| {
-                idx as f64 * x.load(Ordering::SeqCst) as f64 / (POSSIBLE_ANSWERS as f64)
-            })
+            .skip(1)
+            .map(|(idx, x)| idx as f64 * x.load(Ordering::SeqCst) as f64 / ((last - first) as f64))
             .sum();
         println!("avg: {}", avg);
     }
