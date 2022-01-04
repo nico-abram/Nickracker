@@ -9,7 +9,7 @@ The solver has been run on all possible 20736 puzzles (In 269.78s, ~5 mins) and 
 
 ## Is this allowed?
 
-I have asked in the official discord, but have received no official response yet. I have not used this tool (I have actually not solved a single minotaur vault in years in-game). The closest I've come is using the command-line solver that requires manual input (It's a very basic program for which the source code is included in this repository, in the /console folder) and just outputs the guesses as text to a terminal on the practice minotaur vault chest in the city in Ilmari. Use at your own risk.
+I have asked in the official discord, but have received no official response yet. Use at your own risk.
 
 ## Attribution/Thanks
 

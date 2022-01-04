@@ -467,8 +467,8 @@ mod test {
             "guess_count_bins: {:?}",
             guess_count_bins
                 .iter()
-                .skip(1)
                 .enumerate()
+                .skip(1)
                 .map(|(idx, x)| format!("{} tries:{}", idx, x.load(Ordering::SeqCst)))
                 .collect::<Vec<_>>()
         );
