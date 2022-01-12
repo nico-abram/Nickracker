@@ -153,6 +153,8 @@ impl SolverContext {
         correct_positions: u8,
         correct_symbols: u8,
     ) {
+        self.attempt += 1;
+
         let mut compare_area = [ans, ans];
 
         for (idx, mut_ref_to_known_false) in self.answers_known_to_be_false
@@ -187,17 +189,16 @@ impl SolverContext {
             + 1;
     }
     pub fn guess(&mut self) -> PossibleAnswer {
-        self.attempt += 1;
         // For the first attempt, I think any pattern of the form [A, A, B, B] is equally as good
         // Special case it because since it has the biggest search space (Full 12**4) it is the
         // slowest
-        if self.attempt == 1 {
+        if self.attempt == 0 {
             return [0, 0, 1, 2];
         }
-        if self.attempt == 2 {
+        if self.attempt == 1 {
             return [3, 3, 4, 4];
         }
-        if self.attempt == 3 {
+        if self.attempt == 2 {
             //return [4,4,5,5];
             return [5, 5, 6, 6];
         }

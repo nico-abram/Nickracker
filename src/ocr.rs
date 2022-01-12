@@ -79,6 +79,7 @@ impl OcrState {
     ///
     /// Used for preprocessing images before giving them to tesseract
     /// See https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html#rescaling
+    #[cfg_attr(feature = "trace", tracing::instrument(skip(self, data)))]
     fn resize(
         &mut self,
         data: &[u8],
@@ -128,6 +129,7 @@ impl OcrState {
         }
     }
 
+    #[cfg_attr(feature = "trace", tracing::instrument(skip(self, data)))]
     pub fn ocr_num(
         &mut self,
         data: &[u8],
@@ -188,6 +190,7 @@ impl OcrState {
             .into_owned();
         Some(nums)
     }
+    #[cfg_attr(feature = "trace", tracing::instrument(skip(self, data)))]
     pub fn ocr_generic(
         &mut self,
         data: &[u8],

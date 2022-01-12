@@ -217,6 +217,7 @@ pub fn parse_rgb_bmp(buffer: &[u8]) -> Result<(Vec<u8>, usize, usize), &'static 
 // const fn parser
 // This made cargo check take 10+ minutes on a 7mb screenshot
 // NOT worth it
+// See https://github.com/rust-lang/rust/issues/92511
 // Requires staticvec = "0.11.0"
 /*
 pub const STATIC_RGB_VEC_LEN: usize = 1024 * 1024 * 7;

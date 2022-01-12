@@ -150,6 +150,8 @@ pub fn find_window(previous_window: Option<HWND>) -> HWND {
     window
 }
 
+/// Iterates over captured screenshots. Should be called in a dedicated thread.
+/// Items are (rgb_bytes_vec, width, height)
 pub fn for_each<F: FnMut(Vec<u8>, usize, usize) + 'static>(f: F) {
     unsafe {
         RoInitialize(RO_INIT_MULTITHREADED).unwrap();
@@ -187,6 +189,7 @@ pub fn for_each<F: FnMut(Vec<u8>, usize, usize) + 'static>(f: F) {
         TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new({
             let d3d_device = d3d_device.clone();
             let d3d_context = d3d_context.clone();
+            let mut copy_texture = None;
 
             move |frame_pool, _| unsafe {
                 if this_event_listeners_window != LAST_WINDOW.load(Ordering::SeqCst) {
@@ -194,6 +197,10 @@ pub fn for_each<F: FnMut(Vec<u8>, usize, usize) + 'static>(f: F) {
                     // calling get_d3d_interface_from_object
                     return Ok(());
                 }
+                #[cfg(feature = "trace")]
+                let span = tracing::span!(tracing::Level::TRACE, "on_frame");
+                #[cfg(feature = "trace")]
+                let _enter = span.enter();
 
                 let frame_pool = frame_pool.as_ref().unwrap();
                 let frame = frame_pool.TryGetNextFrame()?;
@@ -205,13 +212,29 @@ pub fn for_each<F: FnMut(Vec<u8>, usize, usize) + 'static>(f: F) {
                 desc.MiscFlags = 0;
                 desc.Usage = D3D11_USAGE_STAGING;
                 desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-                let copy_texture = { d3d_device.CreateTexture2D(&desc, std::ptr::null())? };
+                let dims_changed = |copy_texture: &ID3D11Texture2D| {
+                    let mut copy_desc = D3D11_TEXTURE2D_DESC::default();
+                    copy_texture.GetDesc(&mut copy_desc);
+                    copy_desc.Width != desc.Width || copy_desc.Height != desc.Height
+                };
+                if copy_texture.as_ref().map(dims_changed).unwrap_or(false) {
+                    copy_texture = None;
+                }
+                if copy_texture.is_none() {
+                    copy_texture = Some(d3d_device.CreateTexture2D(&desc, std::ptr::null())?);
+                }
+                let copy_texture = copy_texture.as_mut().unwrap();
 
                 d3d_context.CopyResource(Some(copy_texture.cast()?), Some(source_texture.cast()?));
                 if desc.Width == 0 || desc.Height == 0 {
                     return Ok(());
                 }
                 let bits = {
+                    #[cfg(feature = "trace")]
+                    let span = tracing::span!(tracing::Level::TRACE, "map copied texture");
+                    #[cfg(feature = "trace")]
+                    let _enter = span.enter();
+
                     let resource: ID3D11Resource = copy_texture.cast()?;
                     let mapped = d3d_context.Map(Some(resource.clone()), 0, D3D11_MAP_READ, 0)?;
 
@@ -222,31 +245,55 @@ pub fn for_each<F: FnMut(Vec<u8>, usize, usize) + 'static>(f: F) {
                             (desc.Height * mapped.RowPitch) as usize,
                         )
                     };
-
-                    let bytes_per_pixel = 4;
-                    let mut bits = vec![0u8; (desc.Width * desc.Height * bytes_per_pixel) as usize];
+                    /*
+                    let bytes_per_pixel_out = 3;
+                    let bytes_per_pixel_in = 4;
+                    let mut bits =
+                        vec![0u8; (desc.Width * desc.Height * bytes_per_pixel_out) as usize];
+                    let bit_slice =
+                        &mut bits[0..(desc.Width * desc.Height * bytes_per_pixel_out) as usize];
                     for row in 0..desc.Height {
-                        let data_begin = (row * (desc.Width * bytes_per_pixel)) as usize;
-                        let data_end = ((row + 1) * (desc.Width * bytes_per_pixel)) as usize;
+                        let data_begin = (row * (desc.Width * bytes_per_pixel_out)) as usize;
+                        //let data_end = ((row + 1) * (desc.Width * bytes_per_pixel_out)) as usize;
                         let slice_begin = (row * mapped.RowPitch) as usize;
-                        let slice_end = slice_begin + (desc.Width * bytes_per_pixel) as usize;
-                        bits[data_begin..data_end].copy_from_slice(&slice[slice_begin..slice_end]);
+                        //let slice_end = slice_begin + (desc.Width * bytes_per_pixel_out) as
+                        // usize;
+                        for x in 0..desc.Width {
+                            let data_begin = data_begin + (x * bytes_per_pixel_out) as usize;
+                            let slice_begin = slice_begin + (x * bytes_per_pixel_in) as usize;
+                            bit_slice[data_begin..data_begin + bytes_per_pixel_out as usize]
+                                .copy_from_slice(
+                                    &slice[slice_begin..slice_begin + bytes_per_pixel_out as usize],
+                                );
+                        }
                     }
+                    */
+                    #[cfg(feature = "trace")]
+                    let span = tracing::span!(tracing::Level::TRACE, "rgba to rgb");
+                    #[cfg(feature = "trace")]
+                    let _enter = span.enter();
+
+                    // Remove alpha channel
+                    let mut bits =
+                        Vec::with_capacity(desc.Width as usize * 3 * desc.Height as usize);
+                    bits.extend(
+                        slice
+                            .chunks_exact(mapped.RowPitch as usize)
+                            .flat_map(|row| {
+                                row[..(desc.Width * 4) as usize]
+                                    .chunks_exact(4)
+                                    .flat_map(|bgra| [bgra[0], bgra[1], bgra[2]])
+                            }),
+                    );
 
                     d3d_context.Unmap(Some(resource), 0);
 
                     bits
                 };
 
-                call_f(
-                    // Remove alpha channel
-                    bits.chunks_exact(4)
-                        .flat_map(|bgra| [bgra[0], bgra[1], bgra[2]])
-                        .collect(),
-                    desc.Width as usize,
-                    desc.Height as usize,
-                );
-                std::thread::sleep(std::time::Duration::from_millis(1000));
+                call_f(bits, desc.Width as usize, desc.Height as usize);
+                tracy_client::finish_continuous_frame!();
+                //std::thread::sleep(std::time::Duration::from_millis(1000));
                 Ok(())
             }
         })

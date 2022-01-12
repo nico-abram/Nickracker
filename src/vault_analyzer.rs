@@ -5,7 +5,7 @@ use crate::{bmp, ocr, ANSWER_SIZE, MAX_GUESSES};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The results of analyzing a screenshot with a minotaur vault window
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct AnalyzedMinotaurVault {
     /// The symbols currently being selected for the next guess
     selected_symbols: [Option<u8>; ANSWER_SIZE],
@@ -13,11 +13,11 @@ pub struct AnalyzedMinotaurVault {
     made_guesses: [Option<([u8; ANSWER_SIZE], u8, u8)>; MAX_GUESSES - 1],
 }
 impl AnalyzedMinotaurVault {
-    fn selected_iter(&self) -> impl Iterator<Item = usize> + '_ {
+    pub fn selected_iter(&self) -> impl Iterator<Item = usize> + '_ {
         let mut it = self.selected_symbols.iter().cloned();
         std::iter::from_fn(move || it.next().flatten().map(|x| x as usize))
     }
-    fn guesses_iter(&self) -> impl Iterator<Item = ([u8; ANSWER_SIZE], usize, usize)> + '_ {
+    pub fn guesses_iter(&self) -> impl Iterator<Item = ([u8; ANSWER_SIZE], usize, usize)> + '_ {
         let mut it = self.made_guesses.iter().cloned();
         std::iter::from_fn(move || {
             it.next()
@@ -155,6 +155,7 @@ impl VaultAnalyzerCtx {
 }
 
 //// Returns (title, left, right, top)
+#[cfg_attr(feature = "trace", tracing::instrument(skip(ocr, screenshot)))]
 fn get_possible_window_borders_and_title(
     ocr: &mut ocr::OcrState,
     pos: (usize, usize),
@@ -289,12 +290,14 @@ fn get_possible_window_borders_and_title(
     ))
 }
 
+#[cfg_attr(feature = "trace", tracing::instrument(skip(b)))]
 fn to_grayscale(b: &[u8]) -> Vec<u8> {
     b.chunks_exact(3)
         .map(|rgb| rgb.iter().map(|x| (*x as f32) / 3.0).sum::<f32>() as u8)
         .collect::<Vec<u8>>()
 }
 
+#[cfg_attr(feature = "trace", tracing::instrument(skip(ctx, ss)))]
 fn find_minotaur_vault_impl(
     ctx: &mut VaultAnalyzerCtx,
     (ss, ss_w, ss_h): (&[u8], usize, usize),
@@ -303,15 +306,24 @@ fn find_minotaur_vault_impl(
     static ANALYZED_VAULT_COUNTER: AtomicUsize = AtomicUsize::new(0);
     let analyzed_vault_counter = ANALYZED_VAULT_COUNTER.fetch_add(1, Ordering::Relaxed);
 
+    // TODO: Skip title bar?
     let ss_grayscale = to_grayscale(ss);
 
     //ctx.configure_finder((2, 2, 0.01), (0.5, 0.5));
     ctx.configure_finder((1, 1, 0.02), (0.5, 0.5));
-    let window_x_locs = ctx.finder.find_subimage_positions(
-        (&ss_grayscale, ss_w, ss_h),
-        (&ctx.window_x_grayscale, ctx.window_x_w, ctx.window_x_h),
-        1,
-    );
+
+    let window_x_locs = {
+        #[cfg(feature = "trace")]
+        let span = tracing::span!(tracing::Level::TRACE, "window_x_subimage");
+        #[cfg(feature = "trace")]
+        let _enter = span.enter();
+
+        ctx.finder.find_subimage_positions(
+            (&ss_grayscale, ss_w, ss_h),
+            (&ctx.window_x_grayscale, ctx.window_x_w, ctx.window_x_h),
+            1,
+        )
+    };
     if ocr::ENABLE_DEBUG_IMAGE_OUTPUT {
         bmp::save_rgb_bmp(
             ss,
@@ -329,29 +341,39 @@ fn find_minotaur_vault_impl(
     if ocr::DEBUG_CONSOLE_OUTPUT {
         println!("window_x_locs: {:?}", &window_x_locs);
     }
+    let ocr_results = {
+        #[cfg(feature = "trace")]
+        let span = tracing::span!(
+            tracing::Level::TRACE,
+            "get_possible_window_borders_and_title filter_map"
+        );
+        #[cfg(feature = "trace")]
+        let _enter = span.enter();
 
-    let ocr_results = window_x_locs
-        .iter()
-        .filter_map(|&loc| {
-            // For each match of the X subimage we found, attempt to find the window and OCR the
-            // title
-            get_possible_window_borders_and_title(&mut ctx.ocr, (loc.0, loc.1), ss, ss_w)
-                // Then filter the windows that had the Minotaur Lock title
-                .and_then(|x| {
-                    if ocr::DEBUG_CONSOLE_OUTPUT {
-                        println!(
-                            "Found window \"{}\" at ({}, {}) right_x:{}",
-                            &x.0, x.1, x.2, x.3
-                        );
-                    }
-                    if x.0 == "Minotaur Lock" {
-                        Some(x)
-                    } else {
-                        None
-                    }
-                })
-        })
-        .collect::<Vec<_>>();
+        let ocr_results = window_x_locs
+            .iter()
+            .filter_map(|&loc| {
+                // For each match of the X subimage we found, attempt to find the window and OCR the
+                // title
+                get_possible_window_borders_and_title(&mut ctx.ocr, (loc.0, loc.1), ss, ss_w)
+                    // Then filter the windows that had the Minotaur Lock title
+                    .and_then(|x| {
+                        if ocr::DEBUG_CONSOLE_OUTPUT {
+                            println!(
+                                "Found window \"{}\" at ({}, {}) right_x:{}",
+                                &x.0, x.1, x.2, x.3
+                            );
+                        }
+                        if x.0 == "Minotaur Lock" {
+                            Some(x)
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .collect::<Vec<_>>();
+        ocr_results
+    };
 
     let (_title, left, right, top) = ocr_results.get(0)?;
     let (window_x, window_y) = (left + 30, top + 30);
@@ -431,16 +453,24 @@ fn find_minotaur_vault_impl(
     // And look for the comma subimage in it to find actual results of past guesses
     ctx.configure_finder((1, 1, 0.085), (3.0, 3.0));
 
-    let mut past_guess_result_locations = ctx
-        .finder
-        .find_subimage_positions(
-            (&guess_results_area_fragment, window_w, guess_results_area_h),
-            (&ctx.comma_grayscale, ctx.comma_w, ctx.comma_h),
-            1,
-        )
-        .to_owned();
-    // Sort results by y and then x position
-    past_guess_result_locations.sort_unstable_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    let past_guess_result_locations = {
+        #[cfg(feature = "trace")]
+        let span = tracing::span!(tracing::Level::TRACE, "comma subimage");
+        #[cfg(feature = "trace")]
+        let _enter = span.enter();
+
+        let mut past_guess_result_locations = ctx
+            .finder
+            .find_subimage_positions(
+                (&guess_results_area_fragment, window_w, guess_results_area_h),
+                (&ctx.comma_grayscale, ctx.comma_w, ctx.comma_h),
+                1,
+            )
+            .to_owned();
+        // Sort results by y and then x position
+        past_guess_result_locations.sort_unstable_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        past_guess_result_locations
+    };
 
     if ocr::DEBUG_CONSOLE_OUTPUT {
         println!("comma locs: {:?}", &past_guess_result_locations);
@@ -502,6 +532,14 @@ fn find_minotaur_vault_impl(
             None
         }
     };
+
+    #[cfg(feature = "trace")]
+    let span = tracing::span!(
+        tracing::Level::TRACE,
+        "past_guess_result_locations subimage"
+    );
+    #[cfg(feature = "trace")]
+    let _enter = span.enter();
 
     let mut past_guess_results_found = 0usize;
     for ((x, y, _dist), past_guess_result) in past_guess_result_locations
@@ -643,6 +681,15 @@ fn find_minotaur_vault_impl(
         *past_guess_result = Some((guess_symbols, guess_result1, guess_result2));
         past_guess_results_found += 1;
     }
+    #[cfg(feature = "trace")]
+    drop(_enter);
+    #[cfg(feature = "trace")]
+    drop(span);
+
+    #[cfg(feature = "trace")]
+    let span = tracing::span!(tracing::Level::TRACE, "selection_area_fragment subimage");
+    #[cfg(feature = "trace")]
+    let _enter = span.enter();
 
     let selection_area_h = SELECTOR_AREA_HEIGHT_ONLY_SELECTION + 30;
     let mut selection_area_fragment = vec![0u8; window_w * selection_area_h];
@@ -656,6 +703,10 @@ fn find_minotaur_vault_impl(
             selection_area_fragment[out_idx] = ss_grayscale[in_idx];
         }
     }
+    #[cfg(feature = "trace")]
+    drop(_enter);
+    #[cfg(feature = "trace")]
+    drop(span);
 
     if ocr::ENABLE_DEBUG_IMAGE_OUTPUT {
         bmp::save_gray_bmp(
@@ -669,6 +720,13 @@ fn find_minotaur_vault_impl(
         );
     }
 
+    #[cfg(feature = "trace")]
+    let span = tracing::span!(
+        tracing::Level::TRACE,
+        "selected_symbols_x_positions subimage"
+    );
+    #[cfg(feature = "trace")]
+    let _enter = span.enter();
     //ctx.configure_finder((1, 1, 0.05), (0.4, 0.4));
     // TODO: This threshold is way too brittle. Consider adding a bmp of the empty symbol and
     // setting that as None explicitly?
@@ -717,7 +775,9 @@ fn find_minotaur_vault_impl(
             i += 1;
         }
 
-        selected_symbols_x_positions.drain(ANSWER_SIZE..);
+        if selected_symbols_x_positions.len() > ANSWER_SIZE {
+            selected_symbols_x_positions.drain(ANSWER_SIZE..);
+        }
     }
 
     selected_symbols_x_positions.sort_unstable_by(|(x, _n, _d), (x2, _n2, _d2)| x.cmp(x2));
@@ -725,6 +785,11 @@ fn find_minotaur_vault_impl(
     for (idx, (_, symbol_n, _)) in selected_symbols_x_positions.iter().enumerate() {
         result.selected_symbols[idx] = Some(*symbol_n);
     }
+
+    #[cfg(feature = "trace")]
+    drop(_enter);
+    #[cfg(feature = "trace")]
+    drop(span);
 
     println!("{:?}", result);
     println!("Found the vault window");

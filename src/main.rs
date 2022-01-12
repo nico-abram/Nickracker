@@ -95,21 +95,71 @@ enum OverlayChange {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     //std::fs::remove_file("\\\\?\\D:\\dev\\Nickracker\\347_913_7, i Doe 4 “- ").unwrap();
 
-    let (analyzer_vault_sender, _analyzer_vualt_recvr) = std::sync::mpsc::channel();
-    std::thread::spawn(|| {
-        let mut vault_analyzer = vault_analyzer::VaultAnalyzerCtx::new().unwrap();
-        capture::for_each(move |screenshot, width, height| {
-            if let Some((analyzed, _, _)) =
-                vault_analyzer.find_minotaur_vault(&screenshot, width, height)
-            {
-                println!("========= ANALYZED :: {:?}", &analyzed);
-                analyzer_vault_sender.send(analyzed).unwrap();
-            }
-        });
-    });
-    let overlay = overlay::create_window_in_another_thread();
+    #[cfg(feature = "trace")]
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+        )
+        .expect("set up the subscriber");
+    }
 
-    overlay.send_order();
+    let overlay = overlay::create_window_in_another_thread();
+    let solver = std::sync::Arc::new(std::sync::Mutex::new(SolverContext::new()));
+
+    let (analyzer_vault_sender, _analyzer_vualt_recvr) = std::sync::mpsc::channel();
+    std::thread::spawn({
+        let overlay = overlay.clone();
+        let solver = solver;
+        || {
+            let mut vault_analyzer = vault_analyzer::VaultAnalyzerCtx::new().unwrap();
+            let mut last_vault = None;
+            let mut s_t = std::time::Instant::now();
+            capture::for_each(move |screenshot, width, height| {
+                let t = std::time::Instant::now();
+                println!("Time between screens {:?}", t - s_t);
+                s_t = t;
+                if let Some((analyzed, _, _)) =
+                    vault_analyzer.find_minotaur_vault(&screenshot, width, height)
+                {
+                    let t = std::time::Instant::now() - t;
+                    println!("Time to analyze {:?}", t);
+                    if last_vault.as_ref() == Some(&analyzed) {
+                        return;
+                    }
+                    last_vault = Some(analyzed.clone());
+
+                    println!("========= ANALYZED :: {:?}", &analyzed);
+                    analyzer_vault_sender.send(analyzed.clone()).unwrap();
+                    let mut solver = solver.lock().unwrap();
+                    solver.reset();
+
+                    println!("analyzed_main: {:?}", &analyzed);
+                    for (ans, correct_positions, correct_symbols) in analyzed.guesses_iter() {
+                        solver.apply_result(ans, correct_positions as u8, correct_symbols as u8);
+                    }
+                    let guess = solver.guess();
+                    println!("guess_main: {:?}", &guess);
+                    let mut msg = [None; 4];
+                    for (i, &guess) in guess.iter().enumerate() {
+                        msg[i] = Some((guess, 50 + 100 * i, 150));
+                    }
+                    println!("msg_main: {:?}", &msg);
+                    overlay.send_order(overlay::OverlayMsg::UpdateSymbols(msg));
+                } else {
+                    overlay.send_order(overlay::OverlayMsg::UpdateSymbols([None; 4]));
+                    last_vault = None;
+                }
+            });
+        }
+    });
+
+    overlay.send_order(overlay::OverlayMsg::UpdateSymbols([
+        Some((0, 50, 200)),
+        Some((1, 200, 200)),
+        None,
+        None,
+    ]));
 
     let hInstance = unsafe { GetModuleHandleW(PWSTR(std::ptr::null_mut())) } as HINSTANCE;
     if hInstance == 0 {
@@ -157,6 +207,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let result = std::panic::catch_unwind(|| rusty_wndproc(window, message, wparam, lparam));
+    match result {
+        Ok(x) => x,
+        Err(err) => {
+            println!("wndproc error: {:?}", err);
+            std::process::abort()
+        }
+    }
+}
+
+fn rusty_wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match message as u32 {
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
