@@ -520,9 +520,9 @@ dependencies = [
 
 [[package]]
 name = "rgb"
-version = "0.8.30"
+version = "0.8.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08a9852b34c4628f8ad76797a933577059163651ec5a7dace462adc365bee66c"
+checksum = "e74fdc210d8f24a7dbfedc13b04ba5764f5232754ccebfdf5fff1bad791ccbc6"
 dependencies = [
  "bytemuck",
 ]
