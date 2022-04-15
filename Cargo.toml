@@ -29,7 +29,7 @@ find-subimage = "0.1"
 #For ease of use constant CStr
 cstr = "0.2.9"
 crossbeam-channel = "0.5"
-tracing = { version = "0.1.29", optional = true }
+tracing = { version = "0.1.34", optional = true }
 tracing-tracy = { version = "0.8", optional = true }
 tracy-client = { version = "0.12", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
