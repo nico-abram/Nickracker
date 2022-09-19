@@ -17,7 +17,7 @@ tesseract-sys = "0.5.10"
 leptonica-sys = "0.4.1"
 #resize and rbg (To avoid copying a Vec) for resizing
 resize = "0.7.2"
-rgb = "0.8.25"
+rgb = "0.8.34"
 #minotaur puzzle solver
 solver = { path = "solver" }
 #subimage finder
