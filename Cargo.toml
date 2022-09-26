@@ -27,7 +27,7 @@ find-subimage = "0.1"
 #For commented const fn bmp parsing
 #staticvec = "0.11.0"
 #For ease of use constant CStr
-cstr = "0.2.9"
+cstr = "0.2.11"
 crossbeam-channel = "0.5"
 tracing = { version = "0.1.29", optional = true }
 tracing-tracy = { version = "0.8", optional = true }
